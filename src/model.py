@@ -6,12 +6,12 @@ import shutil
 import os
 import datetime
 import tensorflow as tf
+from torch.utils.tensorboard import SummaryWriter
 
-from stable_baselines3 import TD3
+from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import EvalCallback, StopTrainingOnRewardThreshold
-from gym.wrappers import FlattenObservation
 
 repo_dir = "boptestGymService"
 if not os.path.exists(repo_dir):
@@ -87,18 +87,29 @@ def create_env(url, test_case):
                                     warmup_period=24 * 3600,
                                     step_period=900)
     print("Environment created")
+    print('Observation space of the building environment:')
+    print(env.observation_space)
+    print('Action space of the building environment:')
+    print(env.action_space)
     return env
 
 
 def train_model(env, log_path, model_path):
     print("inside train model")
-    model = TD3('MlpPolicy', env, verbose=1, learning_rate=0.001, gamma=0.99, batch_size=100,
-                policy_delay=2)
+
+    full_log_path = os.path.join(log_path, "SAC_10")
+    writer = SummaryWriter(full_log_path)
+
+    model = SAC('MlpPolicy', env, verbose=1, learning_rate=0.0003, gamma=0.99, batch_size=256,
+                 tensorboard_log= log_path)
     print("created the model")
     model.learn(total_timesteps=10)
     print("learning complete")
     model.save(model_path)
-    evaluate_policy(model, env, n_eval_episodes=3)
+
+    mean_reward, _ = evaluate_policy(model, env, n_eval_episodes=5)
+    writer.add_scalar("eval/mean_reward", mean_reward, 0)
+    writer.close()
     env.stop()
 
 if __name__ == "__main__":
@@ -110,4 +121,9 @@ if __name__ == "__main__":
 
     env = create_env(url, test_case)
     train_model(env, log_path, model_path)
+
+    log_dir = os.path.normpath(os.path.join(log_path, "SAC_10"))
+    print("Launching TensorBoard at:", log_dir)
+
+    subprocess.run(["tensorboard", "--logdir", log_dir.replace('\\', '/')])
 
